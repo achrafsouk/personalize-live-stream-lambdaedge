@@ -11,8 +11,6 @@ module.exports = {
     'src/lambda-edge/parse-auth/bundle': path.resolve(__dirname, './src/lambda-edge/parse-auth/index.ts'),
     'src/lambda-edge/check-auth/bundle': path.resolve(__dirname, './src/lambda-edge/check-auth/index.ts'),
     'src/lambda-edge/refresh-auth/bundle': path.resolve(__dirname, './src/lambda-edge/refresh-auth/index.ts'),
-    'src/lambda-edge/http-headers/bundle': path.resolve(__dirname, './src/lambda-edge/http-headers/index.ts'),
-    'src/cfn-custom-resources/react-app/bundle': path.resolve(__dirname, './src/cfn-custom-resources/react-app/index.ts'),
   },
   module: {
     rules: [

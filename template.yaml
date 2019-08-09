@@ -1,96 +1,453 @@
-# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
-
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  Protect downloads of your content hosted on CloudFront with Cognito authentication using Lambda@Edge
-Metadata:
-  AWS::ServerlessRepo::Application:
-    Name: cloudfront-authorization-at-edge
-    Description: >
-      Protect downloads of your content hosted on CloudFront with Cognito authentication using Lambda@Edge.
-      Includes: S3 Bucket w. sample SPA, Cognito User Pool with hosted UI set up, Lambda@Edge functions to validate JWT's and handle OAuth2 redirects.
-    Author: AWS Samples
-    SpdxLicenseId: MIT-0
-    LicenseUrl: LICENSE
-    ReadmeUrl: SERVERLESS-REPO.md
-    Labels:
-      [
-        "cognito",
-        "lambda@edge",
-        "cloudfront",
-        "s3",
-        "react",
-        "angular",
-        "vue",
-        "amplify",
-      ]
-    HomePageUrl: https://github.com/aws-samples/s3-authorization-at-edge
-    SemanticVersion: 0.2.21
-    SourceCodeUrl: https://github.com/aws-samples/s3-authorization-at-edge
 
-Parameters:
-  EmailAddress:
-    Type: String
-    Description: The email address of the user that will be created in the Cognito User Pool. Leave empty to skip user creation.
-    Default: ""
-  RedirectPathSignIn:
-    Type: String
-    Description: The URL path that should handle the redirect from Cognito after sign-in
-    Default: /parseauth
-  RedirectPathSignOut:
-    Type: String
-    Description: The URL path that should handle the redirect from Cognito after sign-out
-    Default: /
-  RedirectPathAuthRefresh:
-    Type: String
-    Description: The URL path that should handle the JWT refresh request
-    Default: /refreshauth
-  AlternateDomainNames:
-    Type: CommaDelimitedList
-    Description: "If you intend to use one or more custom domain names for the CloudFront distribution, please set that up yourself on the CloudFront distribution after deployment. If you provide those domain names now (comma-separated) the necessary Cognito configuration will already be done for you. Alternatively, update the Cognito configuration yourself after deployment: add sign in and sign out URLs for your custom domains to the user pool app client settings."
-    Default: ""
-  CookieSettings:
-    Type: String
-    Description: The settings for the cookies holding the JWT's. To be provided as a JSON object
-    Default: >-
-      {
-        "idToken": "Path=/; Secure; SameSite=Lax",
-        "accessToken": "Path=/; Secure; SameSite=Lax",
-        "refreshToken": "Path=/; Secure; SameSite=Lax",
-        "nonce": "Path=/; Secure; HttpOnly; Max-Age=300; SameSite=Lax"
-      }
-  OAuthScopes:
-    Type: String
-    Description: The OAuth scopes to request the User Pool to add to the access token JWT. To be provided as a JSON array
-    Default: >-
-      ["phone", "email", "profile", "openid", "aws.cognito.signin.user.admin"]
-  HttpHeaders:
-    Type: String
-    Description: The HTTP headers to set on all responses from CloudFront. To be provided as a JSON object
-    Default: >-
-      {
-        "Content-Security-Policy": "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; connect-src 'self' https://*.amazonaws.com https://*.amazoncognito.com",
-        "Strict-Transport-Security": "max-age=31536000; includeSubdomains; preload",
-        "Referrer-Policy": "same-origin",
-        "X-XSS-Protection": "1; mode=block",
-        "X-Frame-Options": "DENY",
-        "X-Content-Type-Options": "nosniff"
-      }
+Description: 'Customize Live Streaming with Lambda@Edge'
 
 Conditions:
-  CreateUser: !Not [!Equals [!Ref EmailAddress, ""]]
+  CreateUser:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: EmailAddress
+      - ''
+
+Parameters:
+
+  PriPullURL:
+    Description: Specify the primary source URL for the PULL input stream
+    Type: String
+    Default: "https://d15an60oaeed9r.cloudfront.net/live_stream_v2/sports_reel_with_markers.m3u8"
+
+  SecPullURL:
+    Description: Specify the secondary source URL for the PULL input stream
+    Type: String
+    Default: "https://d3h5srgm8b0t83.cloudfront.net/live_stream_v2/sports_reel_with_markers.m3u8"
+
+  # cognito
+  AlternateDomainNames:
+    Default: ''
+    Description: 'If you intend to use one or more custom domain names for the CloudFront
+      distribution, please set that up yourself on the CloudFront distribution after
+      deployment. If you provide those domain names now (comma-separated) the necessary
+      Cognito configuration will already be done for you. Alternatively, update the
+      Cognito configuration yourself after deployment: add sign in and sign out URLs
+      for your custom domains to the user pool app client settings.'
+    Type: CommaDelimitedList
+  CookieSettings:
+    Default: "{\n  \"idToken\": \"Path=/; Secure; SameSite=Lax\",\n  \"accessToken\"\
+      : \"Path=/; Secure; SameSite=Lax\",\n  \"refreshToken\": \"Path=/; Secure; SameSite=Lax\"\
+      ,\n  \"nonce\": \"Path=/; Secure; HttpOnly; Max-Age=300; SameSite=Lax\"\n}"
+    Description: The settings for the cookies holding the JWT's. To be provided as
+      a JSON object
+    Type: String
+  EmailAddress:
+    Default: ''
+    Description: The email address of the user that will be created in the Cognito
+      User Pool. Leave empty to skip user creation.
+    Type: String
+  HttpHeaders:
+    Default: "{\n  \"Content-Security-Policy\": \"default-src 'none'; img-src 'self';\
+      \ script-src 'self'; style-src 'self'; object-src 'none'; connect-src 'self'\
+      \ https://*.amazonaws.com https://*.amazoncognito.com\",\n  \"Strict-Transport-Security\"\
+      : \"max-age=31536000; includeSubdomains; preload\",\n  \"Referrer-Policy\":\
+      \ \"same-origin\",\n  \"X-XSS-Protection\": \"1; mode=block\",\n  \"X-Frame-Options\"\
+      : \"DENY\",\n  \"X-Content-Type-Options\": \"nosniff\"\n}"
+    Description: The HTTP headers to set on all responses from CloudFront. To be provided
+      as a JSON object
+    Type: String
+  OAuthScopes:
+    Default: '["phone", "email", "profile", "openid", "aws.cognito.signin.user.admin"]'
+    Description: The OAuth scopes to request the User Pool to add to the access token
+      JWT. To be provided as a JSON array
+    Type: String
+  RedirectPathAuthRefresh:
+    Default: /refreshauth
+    Description: The URL path that should handle the JWT refresh request
+    Type: String
+  RedirectPathSignIn:
+    Default: /parseauth
+    Description: The URL path that should handle the redirect from Cognito after sign-in
+    Type: String
+  RedirectPathSignOut:
+    Default: /console/index.html
+    Description: The URL path that should handle the redirect from Cognito after sign-out
+    Type: String
 
 Globals:
   Function:
     Timeout: 60
 
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: ibc-demo-cloudfront-2019
+      KeyPrefix: demo
+
+
 Resources:
-  S3Bucket:
-    Type: AWS::S3::Bucket
+
+
+
+  MediaLiveRole:
+    Type: AWS::IAM::Role
     Properties:
-      AccessControl: Private
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - "medialive.amazonaws.com"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub "${AWS::StackName}-mediatranscode-role"
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - ssm:DescribeParameters
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:PutParameter
+                Resource:
+                  - !Join ["", ["arn:aws:ssm:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":parameter/*"]]
+
+
+  CustomResource:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/cfn-custom-resources/elemental/
+      Description: Used to deploy custom resources
+      Handler: index.handler
+      Runtime: nodejs10.x
+      Timeout: 180
+      Policies:
+        -
+          PolicyName: !Sub "${AWS::StackName}-custom-resource"
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Join ["", ["arn:aws:logs:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":log-group:/aws/lambda/*"]]
+              -
+                Effect: Allow
+                Action:
+                  - medialive:createInputSecurityGroup
+                  - medialive:describeInput
+                  - medialive:createInput
+                  - medialive:deleteInput
+                  - medialive:stopChannel
+                  - medialive:createChannel
+                  - medialive:deleteChannel
+                  - medialive:deleteInputSecurityGroup
+                  - medialive:describeChannel
+                  - medialive:startChannel
+                  - medialive:tagResource
+
+                Resource:
+                    - !Join ["", ["arn:aws:medialive:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":*"]]
+              -
+                Effect: Allow
+                Action:
+                  - mediapackage:createChannel
+                  - mediapackage:deleteChannel
+                  - mediapackage:listOriginEndpoints
+                  - mediapackage:deleteOriginEndpoint
+                  - mediapackage:createOriginEndpoint
+
+                Resource:
+                    - !Join ["", ["arn:aws:mediapackage:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":*"]]
+              -
+                Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                Resource:
+                  - !Join ["", ["arn:aws:ssm:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":parameter/*"]]
+              -
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  -  !GetAtt MediaLiveRole.Arn
+
+
+  MediaPackageChannel:
+    Type: Custom::MediaPackageChannel
+    Properties:
+      ServiceToken: !GetAtt CustomResource.Arn
+      Resource: MediaPackageChannel
+      ChannelId: !Sub ${AWS::StackName}-livestream
+
+  MediaPackageDashEndpoint:
+    DependsOn: MediaPackageChannel
+    Type: Custom::MediaPackageDashEndpoint
+    Properties:
+      ServiceToken: !GetAtt CustomResource.Arn
+      Resource: MediaPackageEndPoint
+      EndPoint: DASH
+      ChannelId: !GetAtt MediaPackageChannel.ChannelId
+
+
+  MediaLiveInput:
+    Type: Custom::MediaLiveInput
+    Properties:
+      ServiceToken: !GetAtt CustomResource.Arn
+      Resource: MediaLiveInput
+      StreamName: !Sub ${AWS::StackName}-livestream
+      Type: URL_PULL
+      Cidr: ""
+      PriUrl: !Ref PriPullURL
+      PriUser: ""
+      PriPass: ""
+      SecUrl: !Ref SecPullURL
+      SecUser: ""
+      SecPass: ""
+      RoleArn: !GetAtt MediaLiveRole.Arn
+      PriMediaConnectArn: ""
+      SecMediaConnectArn: ""
+
+  MediaLiveChannel:
+    DependsOn: MediaLiveInput
+    DependsOn: MediaPackageChannel
+    Type: Custom::MediaLiveChannel
+    Properties:
+      ServiceToken: !GetAtt CustomResource.Arn
+      Resource: MediaLiveChannel
+      Name: !Sub ${AWS::StackName}-livestream
+      Resolution: 1080
+      Codec: AVC
+      Role: !GetAtt MediaLiveRole.Arn
+      InputId: !GetAtt MediaLiveInput.Id
+      Type: URL_PULL
+      MediaPackagePriUrl: !GetAtt MediaPackageChannel.PrimaryUrl
+      MediaPackagePriUser: !GetAtt MediaPackageChannel.PrimaryUser
+      MediaPackageSecUrl: !GetAtt MediaPackageChannel.SecondaryUrl
+      MediaPackageSecUser: !GetAtt MediaPackageChannel.SecondaryUser
+
+  MediaLiveChannelStart:
+    DependsOn: MediaLiveChannel
+    Type: Custom::MediaLiveChannelStart
+    Properties:
+      ServiceToken: !GetAtt CustomResource.Arn
+      Resource: MediaLiveChannelStart
+      ChannelId: !GetAtt MediaLiveChannel.ChannelId
+# console
+
+  DemoBucket:
+    DeletionPolicy: Retain
+    Type: 'AWS::S3::Bucket'
+
+  DemoBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref DemoBucket
+      PolicyDocument:
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt DemoOriginAccessIdentity.S3CanonicalUserId
+            Action: 's3:GetObject'
+            Resource: !Join ["", ["arn:aws:s3:::", Ref: "DemoBucket", "/*"]]
+
+  DemoOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "access-identity-${DemoBucket}"
+
+  LambdaEdgeExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - edgelambda.amazonaws.com
+            - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  CloudFront:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+          DistributionConfig:
+              Comment: "IBC demo 2019"
+              Origins:
+                  -
+                    Id: S3-solution-website
+                    DomainName: !Sub "${DemoBucket}.s3.${AWS::Region}.amazonaws.com"
+                    S3OriginConfig:
+                        OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${DemoOriginAccessIdentity}"
+                  - 
+                    Id: mediapackage
+                    DomainName: !GetAtt MediaPackageDashEndpoint.DomainName
+                    CustomOriginConfig:
+                      OriginProtocolPolicy: https-only
+
+              CacheBehaviors:
+                  -
+                    PathPattern: /console*
+                    TargetOriginId: S3-solution-website
+                    AllowedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                        - PUT
+                        - POST
+                        - PATCH
+                        - DELETE
+                    CachedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    ForwardedValues:
+                        QueryString: 'false'
+                    ViewerProtocolPolicy: redirect-to-https
+                  -
+                    PathPattern: "*mpd"
+                    TargetOriginId: mediapackage
+                    AllowedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    CachedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    ForwardedValues:
+                        QueryString: 'true'
+                        Cookies:
+                          Forward: all
+                        Headers:
+                          - Access-Control-Allow-Origin
+                          - Access-Control-Request-Method
+                          - Access-Control-Request-Header
+                    ViewerProtocolPolicy: redirect-to-https
+                    LambdaFunctionAssociations:
+                    - EventType: viewer-request
+                      LambdaFunctionARN:
+                        Fn::GetAtt:
+                        - CheckAuthHandlerCodeUpdate
+                        - FunctionArn
+                  - 
+                    Compress: true
+                    ForwardedValues:
+                      QueryString: true
+                    LambdaFunctionAssociations:
+                    - EventType: viewer-request
+                      LambdaFunctionARN:
+                        Fn::GetAtt:
+                        - ParseAuthHandlerCodeUpdate
+                        - FunctionArn
+                    PathPattern:
+                      Ref: RedirectPathSignIn
+                    TargetOriginId: S3-solution-website
+                    ViewerProtocolPolicy: redirect-to-https
+                  - 
+                    Compress: true
+                    ForwardedValues:
+                      QueryString: true
+                    LambdaFunctionAssociations:
+                    - EventType: viewer-request
+                      LambdaFunctionARN:
+                        Fn::GetAtt:
+                        - RefreshAuthHandlerCodeUpdate
+                        - FunctionArn
+                    PathPattern:
+                      Ref: RedirectPathAuthRefresh
+                    TargetOriginId: S3-solution-website
+                    ViewerProtocolPolicy: redirect-to-https
+              DefaultCacheBehavior:
+                    TargetOriginId: mediapackage
+                    AllowedMethods:
+                      - GET
+                      - HEAD
+                      - OPTIONS
+                    CachedMethods:
+                      - GET
+                      - HEAD
+                      - OPTIONS
+                    ForwardedValues:
+                      QueryString: 'true'
+                      Cookies:
+                        Forward: all
+                      Headers:
+                        - Access-Control-Allow-Origin
+                        - Access-Control-Request-Method
+                        - Access-Control-Request-Header
+                    ViewerProtocolPolicy: redirect-to-https
+              IPV6Enabled: 'true'
+              DefaultRootObject: "index.html"
+              CustomErrorResponses:
+                - ErrorCode: '404'
+                  ResponsePagePath: "/index.html"
+                  ResponseCode: '200'
+                - ErrorCode: '403'
+                  ResponsePagePath: "/index.html"
+                  ResponseCode: '200'
+              ViewerCertificate:
+                  CloudFrontDefaultCertificate: 'true'
+              Enabled: 'true'
+              HttpVersion: 'http2'
+
+  DemoIamPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "livestreamDemoPolicy"
+      Roles:
+        - Ref: "CustomResourceRole"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - s3:putObject
+              - s3:deleteObject
+              - s3:deleteBucket
+            Resource:
+              - !Join ["", ["arn:aws:s3:::", Ref: "DemoBucket"]]
+              - !Join ["", ["arn:aws:s3:::", Ref: "DemoBucket", "/*" ]]
+          -
+            Effect: "Allow"
+            Action:
+              - s3:getObject
+            Resource:
+              - !Join ["", ["arn:aws:s3:::",!FindInMap ["SourceCode", "General", "S3Bucket"]]]
+              - !Join ["", ["arn:aws:s3:::",!FindInMap ["SourceCode", "General", "S3Bucket"], "/*"]]
+
+  DemoConsole:
+    DependsOn: DemoIamPolicy
+    Type: Custom::DemoDeloy
+    Properties:
+      ServiceToken: !GetAtt CustomResource.Arn
+      Resource: DemoConsole
+      SrcBucket: !FindInMap ["SourceCode", "General", "S3Bucket"]
+      SrcPath: !FindInMap ["SourceCode", "General", "KeyPrefix"]
+      DemoBucket: !Ref DemoBucket
+      Exports:
+        !Sub |
+          //Configuration file generated by cloudformation
+          'us strict'
+          const exports = {
+            mediaLiveConsole: 'https://console.aws.amazon.com/medialive/home?region=${AWS::Region}#/channels/${MediaLiveChannel.ChannelId}',
+            dash_manifest: 'https://${CloudFront.DomainName}/out/v1${MediaPackageDashEndpoint.Manifest}'
+          }
+
+ # cognito
 
   CheckAuthHandler:
     Type: AWS::Serverless::Function
@@ -118,217 +475,6 @@ Resources:
       Runtime: nodejs8.10 # Currently for Lambda@Edge still a faster runtime than nodejs10.x
       Role: !GetAtt LambdaEdgeExecutionRole.Arn
       Timeout: 5
-
-  HttpHeadersHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/lambda-edge/http-headers/
-      Handler: bundle.handler
-      Runtime: nodejs8.10 # Currently for Lambda@Edge still a faster runtime than nodejs10.x
-      Role: !GetAtt LambdaEdgeExecutionRole.Arn
-      Timeout: 5
-
-  LambdaEdgeExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - edgelambda.amazonaws.com
-                - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-
-  CloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        CacheBehaviors:
-          - PathPattern: !Ref RedirectPathSignIn
-            Compress: true
-            ForwardedValues:
-              QueryString: true
-            LambdaFunctionAssociations:
-              - EventType: viewer-request
-                LambdaFunctionARN: !GetAtt ParseAuthHandlerCodeUpdate.FunctionArn
-            TargetOriginId: dummy-origin
-            ViewerProtocolPolicy: redirect-to-https
-          - PathPattern: !Ref RedirectPathAuthRefresh
-            Compress: true
-            ForwardedValues:
-              QueryString: true
-            LambdaFunctionAssociations:
-              - EventType: viewer-request
-                LambdaFunctionARN: !GetAtt RefreshAuthHandlerCodeUpdate.FunctionArn
-            TargetOriginId: dummy-origin
-            ViewerProtocolPolicy: redirect-to-https
-        DefaultCacheBehavior:
-          Compress: true
-          ForwardedValues:
-            QueryString: true
-          LambdaFunctionAssociations:
-            - EventType: viewer-request
-              LambdaFunctionARN: !GetAtt CheckAuthHandlerCodeUpdate.FunctionArn
-            - EventType: origin-response
-              LambdaFunctionARN: !GetAtt HttpHeadersHandlerCodeUpdate.FunctionArn
-          TargetOriginId: protected-bucket
-          ViewerProtocolPolicy: redirect-to-https
-        Enabled: true
-        Origins:
-          - DomainName: !Join ["", [!Ref S3Bucket, ".s3.amazonaws.com"]]
-            Id: protected-bucket
-            S3OriginConfig:
-              OriginAccessIdentity:
-                !Join [
-                  "",
-                  [
-                    "origin-access-identity/cloudfront/",
-                    !Ref CloudFrontOriginAccessIdentity,
-                  ],
-                ]
-          - DomainName: example.org
-            Id: dummy-origin
-            CustomOriginConfig:
-              OriginProtocolPolicy: match-viewer
-        CustomErrorResponses:
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-
-  CloudFrontOriginAccessIdentity:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: "CloudFront OAI"
-
-  CloudfrontBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref S3Bucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Action:
-              - "s3:GetObject"
-            Effect: "Allow"
-            Resource: !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
-            Principal:
-              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
-
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: true
-      UserPoolName: !Sub "${AWS::Region}-${AWS::StackName}-${AWS::AccountId}"
-      UsernameAttributes:
-        - email
-
-  User:
-    Type: AWS::Cognito::UserPoolUser
-    Condition: CreateUser
-    Properties:
-      Username: !Ref EmailAddress
-      UserPoolId: !Ref UserPool
-
-  UserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      UserPoolId: !Ref UserPool
-
-  UserPoolDomain:
-    Type: Custom::UserPoolDomain
-    Properties:
-      ServiceToken: !GetAtt UserPoolDomainHandler.Arn
-      UserPoolId: !Ref UserPool
-
-  UserPoolDomainHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/cfn-custom-resources/user-pool-domain/
-      Handler: index.handler
-      Runtime: nodejs10.x
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action: cognito-idp:DescribeUserPoolDomain
-              Resource: "*"
-            - Effect: Allow
-              Action:
-                - cognito-idp:CreateUserPoolDomain
-                - cognito-idp:DeleteUserPoolDomain
-              Resource: !GetAtt UserPool.Arn
-
-  UserPoolClientUpdate:
-    Type: Custom::UserPoolClientUpdate
-    Properties:
-      ServiceToken: !GetAtt UserPoolClientUpdateHandler.Arn
-      UserPoolId: !Ref UserPool
-      UserPoolClientId: !Ref UserPoolClient
-      CloudFrontDistributionDomainName: !GetAtt CloudFrontDistribution.DomainName
-      RedirectPathSignIn: !Ref RedirectPathSignIn
-      RedirectPathSignOut: !Ref RedirectPathSignOut
-      AlternateDomainNames: !Ref AlternateDomainNames
-      OAuthScopes: !Ref OAuthScopes
-
-  UserPoolClientUpdateHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/cfn-custom-resources/user-pool-client/
-      Handler: index.handler
-      Runtime: nodejs10.x
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:UpdateUserPoolClient
-              Resource: !GetAtt UserPool.Arn
-
-  ReactApp:
-    Type: Custom::ReactApp
-    Properties:
-      ServiceToken: !GetAtt ReactAppHandler.Arn
-      BucketName: !Ref S3Bucket
-      UserPoolId: !Ref UserPool
-      ClientId: !Ref UserPoolClient
-      CognitoAuthDomain: !GetAtt UserPoolDomain.DomainName
-      RedirectPathSignIn: !Ref RedirectPathSignIn
-      RedirectPathSignOut: !Ref RedirectPathSignOut
-      OAuthScopes: !Ref OAuthScopes
-
-  ReactAppHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/cfn-custom-resources/react-app/
-      Handler: bundle.handler
-      Runtime: nodejs10.x
-      Timeout: 180
-      MemorySize: 2048
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - s3:ListBucket
-              Resource:
-                - !GetAtt S3Bucket.Arn
-            - Effect: Allow
-              Action:
-                - s3:DeleteObject
-                - s3:PutObject
-              Resource:
-                - !GetAtt S3Bucket.Arn
-                - !Join ["/", [!GetAtt S3Bucket.Arn, "*"]]
 
   ParseAuthHandlerCodeUpdate:
     Type: Custom::LambdaCodeUpdate
@@ -366,13 +512,6 @@ Resources:
           "httpHeaders": ${HttpHeaders}
         }
 
-  HttpHeadersHandlerCodeUpdate:
-    Type: Custom::LambdaCodeUpdate
-    Properties:
-      ServiceToken: !GetAtt LambdaCodeUpdateHandler.Arn
-      LambdaFunction: !GetAtt HttpHeadersHandler.Arn
-      Configuration: !Ref HttpHeaders
-
   RefreshAuthHandlerCodeUpdate:
     Type: Custom::LambdaCodeUpdate
     Properties:
@@ -409,29 +548,103 @@ Resources:
                 - !GetAtt CheckAuthHandler.Arn
                 - !GetAtt HttpHeadersHandler.Arn
                 - !GetAtt RefreshAuthHandler.Arn
+       
+  User:
+    Condition: CreateUser
+    Properties:
+      UserPoolId:
+        Ref: UserPool
+      Username:
+        Ref: EmailAddress
+    Type: AWS::Cognito::UserPoolUser
+  UserPool:
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UserPoolName:
+        Fn::Sub: ${AWS::Region}-${AWS::StackName}-${AWS::AccountId}
+      UsernameAttributes:
+      - email
+    Type: AWS::Cognito::UserPool
+  UserPoolClient:
+    Properties:
+      UserPoolId:
+        Ref: UserPool
+    Type: AWS::Cognito::UserPoolClient
+  UserPoolClientUpdate:
+    Properties:
+      AlternateDomainNames:
+        Ref: AlternateDomainNames
+      CloudFrontDistributionDomainName:
+        Fn::GetAtt:
+        - CloudFront
+        - DomainName
+      OAuthScopes:
+        Ref: OAuthScopes
+      RedirectPathSignIn:
+        Ref: RedirectPathSignIn
+      RedirectPathSignOut:
+        Ref: RedirectPathSignOut
+      ServiceToken:
+        Fn::GetAtt:
+        - UserPoolClientUpdateHandler
+        - Arn
+      UserPoolClientId:
+        Ref: UserPoolClient
+      UserPoolId:
+        Ref: UserPool
+    Type: Custom::UserPoolClientUpdate
+  UserPoolClientUpdateHandler:
+    Properties:
+      CodeUri: s3://ibc-demo-cloudfront-2019/demo/29d665869e3b9e9639341356c9d38c97
+      Handler: index.handler
+      Policies:
+      - Statement:
+        - Action:
+          - cognito-idp:UpdateUserPoolClient
+          Effect: Allow
+          Resource:
+            Fn::GetAtt:
+            - UserPool
+            - Arn
+        Version: '2012-10-17'
+      Runtime: nodejs10.x
+    Type: AWS::Serverless::Function
+  UserPoolDomain:
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - UserPoolDomainHandler
+        - Arn
+      UserPoolId:
+        Ref: UserPool
+    Type: Custom::UserPoolDomain
+  UserPoolDomainHandler:
+    Properties:
+      CodeUri: s3://ibc-demo-cloudfront-2019/demo/8cc16ed34eaa62ceace10c7c22cffb49
+      Handler: index.handler
+      Policies:
+      - Statement:
+        - Action: cognito-idp:DescribeUserPoolDomain
+          Effect: Allow
+          Resource: '*'
+        - Action:
+          - cognito-idp:CreateUserPoolDomain
+          - cognito-idp:DeleteUserPoolDomain
+          Effect: Allow
+          Resource:
+            Fn::GetAtt:
+            - UserPool
+            - Arn
+        Version: '2012-10-17'
+      Runtime: nodejs10.x
+    Type: AWS::Serverless::Function
 
 Outputs:
-  S3Bucket:
-    Description: The S3 Bucket where the SPA (React, Angular, Vue, ...) is uploaded to
-    Value: !Ref S3Bucket
-  WebsiteUrl:
-    Description: URL of the CloudFront distribution that serves your SPA from S3
-    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
-  CloudFrontDistribution:
-    Description: ID of the CloudFront distribution that serves your SPA from S3
-    Value: !Ref CloudFrontDistribution
-  UserPoolId:
-    Description: The ID of the Cognito User Pool
-    Value: !Ref UserPool
-  ClientId:
-    Description: Client ID to use to interact with the User Pool
-    Value: !Ref UserPoolClient
-  CognitoAuthDomain:
-    Description: The domain where the Cognito Hosted UI is served
-    Value: !GetAtt UserPoolDomain.DomainName
-  RedirectUrisSignIn:
-    Description: The URI(s) that will handle the redirect from Cognito after successfull sign-in
-    Value: !GetAtt UserPoolClientUpdate.RedirectUrisSignIn
-  RedirectUrisSignOut:
-    Description: The URI(s) that will handle the redirect from Cognito after successfull sign-out
-    Value: !GetAtt UserPoolClientUpdate.RedirectUrisSignOut
+  CloudFrontDashEnpoint:
+    Description: DASH playback URL
+    Value: !Sub https://${CloudFront.DomainName}/out/v1${MediaPackageDashEndpoint.Manifest}
+
+  DemoConsole:
+    Description: Player URL
+    Value: !Sub https://${CloudFront.DomainName}/console/index.html
