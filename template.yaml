@@ -85,8 +85,6 @@ Mappings:
 
 Resources:
 
-
-
   MediaLiveRole:
     Type: AWS::IAM::Role
     Properties:
@@ -114,16 +112,20 @@ Resources:
                   - ssm:PutParameter
                 Resource:
                   - !Join ["", ["arn:aws:ssm:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":parameter/*"]]
-
-
-  CustomResource:
-    Type: AWS::Serverless::Function
+  CustomResourceRole:
+    Type: AWS::IAM::Role
     Properties:
-      CodeUri: src/cfn-custom-resources/elemental/
-      Description: Used to deploy custom resources
-      Handler: index.handler
-      Runtime: nodejs10.x
-      Timeout: 180
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
       Policies:
         -
           PolicyName: !Sub "${AWS::StackName}-custom-resource"
@@ -178,6 +180,15 @@ Resources:
                 Resource:
                   -  !GetAtt MediaLiveRole.Arn
 
+  CustomResource:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/cfn-custom-resources/elemental/
+      Description: Used to deploy custom resources
+      Handler: index.handler
+      Runtime: nodejs10.x
+      Timeout: 180
+      Role: !GetAtt CustomResourceRole.Arn
 
   MediaPackageChannel:
     Type: Custom::MediaPackageChannel
@@ -242,7 +253,6 @@ Resources:
 # console
 
   DemoBucket:
-    DeletionPolicy: Retain
     Type: 'AWS::S3::Bucket'
 
   DemoBucketPolicy:
@@ -284,7 +294,7 @@ Resources:
       Type: AWS::CloudFront::Distribution
       Properties:
           DistributionConfig:
-              Comment: "IBC demo 2019"
+              Comment: !Sub "${AWS::StackName}-cloudfront-distro"
               Origins:
                   -
                     Id: S3-solution-website
@@ -296,8 +306,33 @@ Resources:
                     DomainName: !GetAtt MediaPackageDashEndpoint.DomainName
                     CustomOriginConfig:
                       OriginProtocolPolicy: https-only
+                  -
+                    DomainName: dummy.org
+                    Id: dummy-origin
+                    CustomOriginConfig:
+                      OriginProtocolPolicy: match-viewer
 
               CacheBehaviors:
+                  -
+                    PathPattern: /console/log*
+                    TargetOriginId: dummy-origin
+                    AllowedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    CachedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    ForwardedValues:
+                        QueryString: 'false'
+                    ViewerProtocolPolicy: redirect-to-https
+                    LambdaFunctionAssociations:
+                    - EventType: viewer-request
+                      LambdaFunctionARN:
+                        Fn::GetAtt:
+                        - CheckAuthHandlerCodeUpdate
+                        - FunctionArn
                   -
                     PathPattern: /console*
                     TargetOriginId: S3-solution-website
@@ -305,10 +340,6 @@ Resources:
                         - GET
                         - HEAD
                         - OPTIONS
-                        - PUT
-                        - POST
-                        - PATCH
-                        - DELETE
                     CachedMethods:
                         - GET
                         - HEAD
@@ -317,7 +348,49 @@ Resources:
                         QueryString: 'false'
                     ViewerProtocolPolicy: redirect-to-https
                   -
-                    PathPattern: "*mpd"
+                    PathPattern: /unauthorized*
+                    TargetOriginId: S3-solution-website
+                    AllowedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    CachedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    ForwardedValues:
+                        QueryString: 'false'
+                    ViewerProtocolPolicy: redirect-to-https
+                  - 
+                    PathPattern:
+                      Ref: RedirectPathSignIn
+                    Compress: true
+                    ForwardedValues:
+                      QueryString: true
+                    LambdaFunctionAssociations:
+                    - EventType: viewer-request
+                      LambdaFunctionARN:
+                        Fn::GetAtt:
+                        - ParseAuthHandlerCodeUpdate
+                        - FunctionArn
+                    TargetOriginId: dummy-origin
+                    ViewerProtocolPolicy: redirect-to-https
+                  - 
+                    PathPattern:
+                      Ref: RedirectPathAuthRefresh
+                    Compress: true
+                    ForwardedValues:
+                      QueryString: true
+                    LambdaFunctionAssociations:
+                    - EventType: viewer-request
+                      LambdaFunctionARN:
+                        Fn::GetAtt:
+                        - RefreshAuthHandlerCodeUpdate
+                        - FunctionArn
+                    TargetOriginId: dummy-origin
+                    ViewerProtocolPolicy: redirect-to-https
+                  -
+                    PathPattern: /*mpd
                     TargetOriginId: mediapackage
                     AllowedMethods:
                         - GET
@@ -332,44 +405,15 @@ Resources:
                         Cookies:
                           Forward: all
                         Headers:
-                          - Access-Control-Allow-Origin
-                          - Access-Control-Request-Method
-                          - Access-Control-Request-Header
+                        - '*'
                     ViewerProtocolPolicy: redirect-to-https
                     LambdaFunctionAssociations:
-                    - EventType: viewer-request
+                    - EventType: origin-request
                       LambdaFunctionARN:
                         Fn::GetAtt:
                         - CheckAuthHandlerCodeUpdate
                         - FunctionArn
-                  - 
-                    Compress: true
-                    ForwardedValues:
-                      QueryString: true
-                    LambdaFunctionAssociations:
-                    - EventType: viewer-request
-                      LambdaFunctionARN:
-                        Fn::GetAtt:
-                        - ParseAuthHandlerCodeUpdate
-                        - FunctionArn
-                    PathPattern:
-                      Ref: RedirectPathSignIn
-                    TargetOriginId: S3-solution-website
-                    ViewerProtocolPolicy: redirect-to-https
-                  - 
-                    Compress: true
-                    ForwardedValues:
-                      QueryString: true
-                    LambdaFunctionAssociations:
-                    - EventType: viewer-request
-                      LambdaFunctionARN:
-                        Fn::GetAtt:
-                        - RefreshAuthHandlerCodeUpdate
-                        - FunctionArn
-                    PathPattern:
-                      Ref: RedirectPathAuthRefresh
-                    TargetOriginId: S3-solution-website
-                    ViewerProtocolPolicy: redirect-to-https
+
               DefaultCacheBehavior:
                     TargetOriginId: mediapackage
                     AllowedMethods:
@@ -546,7 +590,6 @@ Resources:
               Resource:
                 - !GetAtt ParseAuthHandler.Arn
                 - !GetAtt CheckAuthHandler.Arn
-                - !GetAtt HttpHeadersHandler.Arn
                 - !GetAtt RefreshAuthHandler.Arn
        
   User:
@@ -596,7 +639,7 @@ Resources:
     Type: Custom::UserPoolClientUpdate
   UserPoolClientUpdateHandler:
     Properties:
-      CodeUri: s3://ibc-demo-cloudfront-2019/demo/29d665869e3b9e9639341356c9d38c97
+      CodeUri: src/cfn-custom-resources/user-pool-client/
       Handler: index.handler
       Policies:
       - Statement:
@@ -621,7 +664,7 @@ Resources:
     Type: Custom::UserPoolDomain
   UserPoolDomainHandler:
     Properties:
-      CodeUri: s3://ibc-demo-cloudfront-2019/demo/8cc16ed34eaa62ceace10c7c22cffb49
+      CodeUri: src/cfn-custom-resources/user-pool-domain/
       Handler: index.handler
       Policies:
       - Statement:
@@ -646,5 +689,5 @@ Outputs:
     Value: !Sub https://${CloudFront.DomainName}/out/v1${MediaPackageDashEndpoint.Manifest}
 
   DemoConsole:
-    Description: Player URL
+    Description: Console URL
     Value: !Sub https://${CloudFront.DomainName}/console/index.html

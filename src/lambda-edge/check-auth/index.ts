@@ -18,11 +18,6 @@ export interface HttpResponse {
     code: Number;
     bodyBuffer: Buffer;
 }
-//const crypto = require('crypto');
-//var fs = require("fs");
-
-//const cfKeypairId = 'APKAJZBXYQEB3DUORKDA'; 
-//const privateKey = fs.readFileSync("key.pem");
 
 const keepAliveAgentOrigin = new Agent({ keepAlive: true, keepAliveMsecs: 1000});
 const DEFAULT_HTTP_REQUEST_TIMEOUT = 2000;
@@ -38,7 +33,7 @@ const unavailableManifest =
       <Period start="PT0S" duration="PT20.987S" id="1">
         <AdaptationSet mimeType="video/mp4" codecs="avc1.4d4028,mp4a.40.2" frameRate="30000/1001" segmentAlignment="true" subsegmentAlignment="true" startWithSAP="1" subsegmentStartsWithSAP="1" bitstreamSwitching="false">
           <ContentComponent contentType="video" id="1"/>
-          <SegmentTemplate timescale="90000" media="https://CLOUDFRONT_DOMAIN/unavailable/unavailable_$Number%09d$.mp4" initialization="https://CLOUDFRONT_DOMAIN/unavailable/unavailableinit.mp4" duration="1081080" startNumber="1"/>
+          <SegmentTemplate timescale="90000" media="https://CLOUDFRONT_DOMAIN/unauthorized/unavailable_$Number%09d$.mp4" initialization="https://CLOUDFRONT_DOMAIN/unauthorized/unavailableinit.mp4" duration="1081080" startNumber="1"/>
           <Representation id="1" width="1920" height="1080" bandwidth="1000000">
             <SubRepresentation contentComponent="1" bandwidth="1000000" codecs="avc1.4d4028"/>
           </Representation>
@@ -46,6 +41,7 @@ const unavailableManifest =
       </Period>
     </MPD>`;
 
+const MAX_NON_PREMIUM_BITRATE = 200000;
 
 export const handler: CloudFrontRequestHandler = async (event) => {
     const request = event.Records[0].cf.request;
@@ -54,9 +50,6 @@ export const handler: CloudFrontRequestHandler = async (event) => {
     console.log(`requestedUri = ${requestedUri}`);
     const nonce = randomBytes(10).toString('hex');
     try {
-        if ((!request.origin) || (!request.origin.custom))
-            throw new Error('Mediapackage domain is not defined');
-        const mediapackageDomain = request.origin.custom.domainName;
         const { tokenUserName, idToken, refreshToken } = extractAndParseCookies(request.headers, clientId);
         if (!tokenUserName || !idToken) {
             throw new Error('No valid credentials present in cookies');
@@ -129,6 +122,9 @@ export const handler: CloudFrontRequestHandler = async (event) => {
         console.log('not login/logout -> request for mpd');
 
         try {
+            if ((!request.origin) || (!request.origin.custom))
+                throw new Error('Mediapackage domain is not defined');
+            const mediapackageDomain = request.origin.custom.domainName;
             const response = await getContent(mediapackageDomain, requestedUri, keepAliveAgentOrigin);
             var manifest = response.toString();
 
@@ -154,8 +150,24 @@ export const handler: CloudFrontRequestHandler = async (event) => {
                 };
                 var jsonObj = parse(response.toString(),options);
                 // process manifest and cut high bitrates
-                jsonObj.MPD.Period.AdaptationSet[0].Representation.splice(0, 7);
-                jsonObj.MPD.Period.AdaptationSet[1].Representation.splice(0, 7);
+                var adaptationSetLength = jsonObj.MPD.Period.AdaptationSet.length;
+                for (var i = 0; i < adaptationSetLength; i++) {
+                    console.log(jsonObj.MPD.Period.AdaptationSet[i]["@_mimeType"]);
+                    if(jsonObj.MPD.Period.AdaptationSet[i]["@_mimeType"].includes("video")) {
+                        console.log(`media contains video adaptation set at index ${i}`);
+                        //var representationLength = jsonObj.MPD.Period.AdaptationSet[i].Representation.length;
+                        var filteredRepresentation = jsonObj.MPD.Period.AdaptationSet[i].Representation.filter(function(value: any){
+                            console.log(`bitrate found ${value["@_bandwidth"]}`);
+                            if(parseInt(value["@_bandwidth"], 10) > MAX_NON_PREMIUM_BITRATE) {
+                                console.log('removing this bitrate')
+                                return false;
+                            } else return true;
+                        
+                        });
+                        jsonObj.MPD.Period.AdaptationSet[i].Representation = filteredRepresentation;
+                    }
+
+                }
 
                 var defaultOptions = {
                     ignoreAttributes : false,
