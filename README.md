@@ -19,3 +19,15 @@ sam deploy --template-file packaged.yaml --stack-name <YOUR STACK NAME> --capabi
 ## Create users
 
 Then, go to the created cognito user pool and add a user gourp called premium, then create two users, with one of them in the premium group.
+
+## Screenshots
+
+# Future development
+- Sign chunks as well
+- Fetch raw manifest through CloudFront isntead of MediaPackage directly in Lambda@Edge
+- Add CORS headers
+- Display Manifest URL on the main page
+- Use the Autopublish property for Lambda@Edge function in the CloudFormation template
+- Clean code from unused libraries/functionalities (CloudFormation parameters, different streaming formats, HTML...)
+- Enable Autoplay
+- Store website static assets in the repository instead of an S3 bucket
