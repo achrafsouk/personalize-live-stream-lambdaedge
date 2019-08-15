@@ -9,7 +9,9 @@ Only authenticated users can stream live content, otherwise they will get unauth
 <img src="image-gh.png" width="900">
 
 You can try the deployed solution here: https://d2g15edr113hw7.cloudfront.net/console/index.html
+
 premium user  : alice.cloudfront.ibc.2019@gmail.com pass: CloudFront0!
+
 standard user : bob.cloudfront.ibc.2019@gmail.com   pass: CloudFront0!
 
 # Instructions for deploying in us-east-1
