@@ -14,6 +14,10 @@ premium user  : alice.cloudfront.ibc.2019@gmail.com pass: CloudFront0!
 
 standard user : bob.cloudfront.ibc.2019@gmail.com   pass: CloudFront0!
 
+# Architecture
+
+<img src="architecture.png" width="600">
+
 # Instructions for deploying in us-east-1
 
 ## Run the following commands
