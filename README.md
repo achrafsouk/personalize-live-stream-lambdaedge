@@ -2,6 +2,16 @@
 
 This demo provides a DASH player streaming live video using AWS Media Services (MediaLive & MediaPackage), delivered by Amazon CloudFront, and personilized using AWS Lambda@Edge and Amazon Cognito. 
 
+# Use case
+
+Only authenticated users can stream live content, otherwise they will get unauthorized-video. Based on the entitlement of the user, he/she will get higher or lower streaming quality.
+
+<img src="image-gh.png" width="900">
+
+You can try the deployed solution here: https://d2g15edr113hw7.cloudfront.net/console/index.html
+premium user  : alice.cloudfront.ibc.2019@gmail.com pass: CloudFront0!
+standard user : bob.cloudfront.ibc.2019@gmail.com   pass: CloudFront0!
+
 # Instructions for deploying in us-east-1
 
 ## Run the following commands
@@ -20,9 +30,7 @@ sam deploy --template-file packaged.yaml --stack-name <YOUR STACK NAME> --capabi
 
 Then, go to the created cognito user pool and add a user gourp called premium, then create two users, with one of them in the premium group.
 
-## Screenshots
 
-<img src="image-gh.png" width="900">
 
 # Future development
 - Sign chunks as well
