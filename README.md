@@ -22,6 +22,8 @@ Then, go to the created cognito user pool and add a user gourp called premium, t
 
 ## Screenshots
 
+<img src="image-gh.png" width="900">
+
 # Future development
 - Sign chunks as well
 - Fetch raw manifest through CloudFront isntead of MediaPackage directly in Lambda@Edge
