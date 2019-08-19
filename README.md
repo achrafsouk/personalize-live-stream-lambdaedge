@@ -47,7 +47,7 @@ Then, go to the created cognito user pool and add a user gourp called premium, t
 - Enable Autoplay
 - Store website static assets in the repository instead of an S3 bucket
 
-# Future development
+# Acknowledgement
 
 This demo is built based on the following previous projects:
 - Authorization@Edge using cookies, Protect your Amazon CloudFront content from being downloaded by unauthenticated users: https://aws.amazon.com/blogs/networking-and-content-delivery/authorizationedge-using-cookies-protect-your-amazon-cloudfront-content-from-being-downloaded-by-unauthenticated-users/
