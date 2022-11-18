@@ -24,7 +24,7 @@
     "@types/adm-zip": "^0.4.32",
     "webpack": "^4.36.1",
     "webpack-bundle-analyzer": "^3.3.2",
-    "webpack-cli": "^3.3.6"
+    "webpack-cli": "^3.3.12"
   },
   "dependencies": {
     "aws-sdk": "^2.495.0",
